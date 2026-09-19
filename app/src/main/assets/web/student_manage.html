@@ -570,8 +570,16 @@
 
         // 获取学生列表
         async function loadStudentList() {
+            const tbody = document.getElementById('studentTableBody');
+            const mobileList = document.getElementById('mobileStudentList');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty-state">正在加载学生数据...</td></tr>';
+            if (mobileList) mobileList.innerHTML = '<div class="empty-state">正在加载学生数据...</div>';
+
             try {
-                const res = await fetch(`${API_BASE}/api/admin/students`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(`${API_BASE}/api/admin/students`, { signal: controller.signal });
+                clearTimeout(timeoutId);
                 if (res.ok) {
                     const result = await res.json();
                     if (result.code === 200 && Array.isArray(result.data)) {

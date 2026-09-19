@@ -153,15 +153,6 @@ const App = {
             });
         }
 
-        // 手动同步桌面小组件按钮
-        const syncBtn = document.getElementById('btn-sync-widget');
-        if (syncBtn) {
-            syncBtn.addEventListener('click', () => {
-                const courses = DataManager.getCourses();
-                JSBridge.syncCoursesToWidget(JSON.stringify(courses));
-                JSBridge.showToast('课表数据已同步至桌面小组件');
-            });
-        }
 
         // 打开时光序标准课表导出弹窗
         const openExportBtn = document.getElementById('btn-open-export-modal');
