@@ -1036,6 +1036,8 @@ const App = {
 
             input.value = '';
             await this.renderChatMessages();
+            localStorage.setItem('campus_chat_read_' + this.activeChatSession.sessionKey, new Date().toISOString());
+            this.renderChatSessionList();
         };
 
         if (sendBtn) sendBtn.addEventListener('click', doSend);
@@ -1100,6 +1102,10 @@ const App = {
 
         this.renderChatSessionList();
         await this.renderChatMessages();
+
+        // 标记当前会话已读
+        localStorage.setItem('campus_chat_read_' + session.sessionKey, new Date().toISOString());
+        this.renderChatSessionList();
     },
 
     renderChat: async function () {
@@ -1114,6 +1120,25 @@ const App = {
         const currentUser = DataManager.getCurrentUser();
         const activeKey = this.activeChatSession.sessionKey;
 
+        // 未读消息红点辅助函数
+        const hasUnread = (sKey) => {
+            const stored = localStorage.getItem('campus_messages');
+            if (!stored) return false;
+            try {
+                const all = JSON.parse(stored);
+                const msgs = all.filter(m => m.sessionKey === sKey);
+                if (!msgs.length) return false;
+                const readKey = 'campus_chat_read_' + sKey;
+                const lastRead = localStorage.getItem(readKey);
+                if (!lastRead) return true;
+                return msgs.some(m => {
+                    const ts = m.timestamp || m.time || '';
+                    return ts > lastRead && m.senderAccount !== currentUser.accountNo && !m.isSelf;
+                });
+            } catch (e) { return false; }
+        };
+        const unreadDot = '<span style="position:absolute;top:8px;right:10px;width:8px;height:8px;background:#ef4444;border-radius:50%;border:1.5px solid #fff;"></span>';
+
         // 1. 群聊分类列表
         if (this.chatFilter === 'groups') {
             const groups = DataManager.getChatGroups();
@@ -1121,8 +1146,10 @@ const App = {
                 const sKey = `group:${g.id}`;
                 const isActive = activeKey === sKey;
                 const isClass = g.type === 'class';
+                const unread = hasUnread(sKey);
                 return `
-                    <div class="chat-session-item ${isActive ? 'active' : ''}" onclick="App.switchChatSession({ sessionKey: '${sKey}', chatType: 'group', targetId: '${g.id}', title: '${g.name.replace(/'/g, "\\'")}', desc: '${isClass ? (g.classGrade + ' 班级群') : (g.creatorName ? ('群主: ' + g.creatorName) : '全校交流群')}' })">
+                    <div class="chat-session-item ${isActive ? 'active' : ''}" style="position:relative;" onclick="App.switchChatSession({ sessionKey: '${sKey}', chatType: 'group', targetId: '${g.id}', title: '${g.name.replace(/'/g, "\\'")}', desc: '${isClass ? (g.classGrade + ' 班级群') : (g.creatorName ? ('群主: ' + g.creatorName) : '全校交流群')}' })">
+                        ${unread ? unreadDot : ''}
                         <div class="chat-session-avatar" style="background: ${isClass ? '#dcfce7' : '#e0e7ff'}; color: ${isClass ? '#166534' : '#4338ca'};">
                             ${isClass ? '班' : '群'}
                         </div>
@@ -1139,7 +1166,42 @@ const App = {
             return;
         }
 
-        // 2. 联系人分类（同班同学 / 全部学生）
+        // 2. 老师列表（学生可主动发起与老师私聊）
+        if (this.chatFilter === 'teachers') {
+            const allAccounts = DataManager.getAccounts ? DataManager.getAccounts() : [];
+            const teacherList = allAccounts.filter(a => a.role === 'admin' && a.accountNo !== currentUser.accountNo);
+
+            if (!teacherList.length) {
+                container.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 20px;">暂无老师联系人</div>`;
+                return;
+            }
+
+            container.innerHTML = teacherList.map(t => {
+                const pairKey = [currentUser.accountNo || 'me', t.accountNo || 'other'].sort().join('_');
+                const sKey = `private:${pairKey}`;
+                const isActive = activeKey === sKey;
+                const unread = hasUnread(sKey);
+
+                return `
+                    <div class="chat-session-item ${isActive ? 'active' : ''}" style="position:relative;" onclick="App.switchChatSession({ sessionKey: '${sKey}', chatType: 'private', targetId: '${t.accountNo}', title: '与 ${t.name} 私聊', desc: '${t.college || ''} · ${t.major || t.classGrade || ''}' })">
+                        ${unread ? unreadDot : ''}
+                        <div class="chat-session-avatar" style="background: #fef3c7; color: #92400e;">
+                            ${t.avatarText || t.name.charAt(0)}
+                        </div>
+                        <div class="chat-session-info">
+                            <div class="chat-session-title-line">
+                                <span class="chat-session-name">${t.name}</span>
+                                <span class="chat-session-tag" style="background:#fef3c7; color:#92400e;">老师</span>
+                            </div>
+                            <div class="chat-session-sub">${t.major || t.classGrade || t.accountNo}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            return;
+        }
+
+        // 3. 联系人分类（同班同学 / 全部学生）
         const allAccounts = DataManager.getAccounts ? DataManager.getAccounts() : [];
         let candidateList = allAccounts.filter(a => a.role === 'student' && a.accountNo !== currentUser.accountNo);
 
@@ -1153,14 +1215,15 @@ const App = {
         }
 
         container.innerHTML = candidateList.map(s => {
-            // 生成确定性的双人私聊 key (两个学号排序后拼接，确保彼此打开的是同一条私聊流)
             const pairKey = [currentUser.accountNo || 'me', s.accountNo || 'other'].sort().join('_');
             const sKey = `private:${pairKey}`;
             const isActive = activeKey === sKey;
             const isClassmate = s.classGrade && s.classGrade === currentUser.classGrade;
+            const unread = hasUnread(sKey);
 
             return `
-                <div class="chat-session-item ${isActive ? 'active' : ''}" onclick="App.switchChatSession({ sessionKey: '${sKey}', chatType: 'private', targetId: '${s.accountNo}', title: '与 ${s.name} 私聊', desc: '${s.college || ''} · ${s.classGrade || s.major || ''}' })">
+                <div class="chat-session-item ${isActive ? 'active' : ''}" style="position:relative;" onclick="App.switchChatSession({ sessionKey: '${sKey}', chatType: 'private', targetId: '${s.accountNo}', title: '与 ${s.name} 私聊', desc: '${s.college || ''} · ${s.classGrade || s.major || ''}' })">
+                    ${unread ? unreadDot : ''}
                     <div class="chat-session-avatar" style="background: ${isClassmate ? '#fef3c7' : '#f1f5f9'}; color: ${isClassmate ? '#92400e' : '#334155'};">
                         ${s.avatarText || s.name.charAt(0)}
                     </div>
