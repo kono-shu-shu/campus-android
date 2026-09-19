@@ -160,14 +160,23 @@
                     });
                     const resData = await res.json();
                     if (resData.code === 200 && resData.data && resData.data.id) {
-                        DataManager.addNote({
+                        // 仅存 localStorage，不再调 addNote（避免二次提交后端）
+                        const note = {
                             id: resData.data.id,
                             title: resData.data.title,
                             category: resData.data.category,
                             author: resData.data.authorName,
+                            authorAccount: currentUser.accountNo,
+                            role: currentUser.role,
                             tags: resData.data.tags,
-                            content: resData.data.content
-                        });
+                            content: resData.data.content,
+                            time: '刚刚',
+                            likes: 0
+                        };
+                        const stored = localStorage.getItem('campus_notes');
+                        let list = stored ? JSON.parse(stored) : [];
+                        list.unshift(note);
+                        localStorage.setItem('campus_notes', JSON.stringify(list));
                         JSBridge.showToast('笔记发布成功！');
                         setTimeout(() => {
                             window.location.href = `note_detail.html?id=${resData.data.id}`;
@@ -179,7 +188,7 @@
                 }
 
                 // 离线环境本地兜底
-                const localNote = DataManager.addNote({
+                const localNote = await DataManager.addNote({
                     title: title,
                     category: category,
                     author: currentUser.name,

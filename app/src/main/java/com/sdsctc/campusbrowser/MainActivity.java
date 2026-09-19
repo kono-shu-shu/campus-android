@@ -1,7 +1,9 @@
 package com.sdsctc.campusbrowser;
 
 import android.annotation.SuppressLint;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.WebChromeClient;
@@ -11,6 +13,8 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.sdsctc.campusbrowser.bridge.WebAppInterface;
@@ -19,11 +23,35 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView mWebView;
     private ProgressBar mProgressBar;
+    private android.webkit.ValueCallback<Uri[]> mFilePathCallback;
+    private ActivityResultLauncher<Intent> mFilePickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        mFilePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (mFilePathCallback == null) return;
+                Uri[] results = null;
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Intent data = result.getData();
+                    if (data.getDataString() != null) {
+                        results = new Uri[]{ Uri.parse(data.getDataString()) };
+                    } else if (data.getClipData() != null) {
+                        int count = data.getClipData().getItemCount();
+                        results = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    }
+                }
+                mFilePathCallback.onReceiveValue(results);
+                mFilePathCallback = null;
+            }
+        );
 
         initViews();
         setupWebView();
@@ -51,10 +79,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // 注入原生 JSBridge 交互接口
         mWebView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-        // 进度与标题监听
         mWebView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
@@ -65,9 +91,24 @@ public class MainActivity extends AppCompatActivity {
                     mProgressBar.setVisibility(View.GONE);
                 }
             }
+
+            @Override
+            public boolean onShowFileChooser(WebView webView, android.webkit.ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mFilePathCallback != null) {
+                    mFilePathCallback.onReceiveValue(null);
+                }
+                mFilePathCallback = filePathCallback;
+                try {
+                    Intent intent = fileChooserParams.createIntent();
+                    mFilePickerLauncher.launch(intent);
+                } catch (Exception e) {
+                    mFilePathCallback = null;
+                    return false;
+                }
+                return true;
+            }
         });
 
-        // 页面跳转拦截与状态监听
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
@@ -98,7 +139,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadAppEntry() {
-        // 优先加载本地 asset 中内嵌的 Web 前端系统（毫秒级离线渲染）
         mWebView.loadUrl("file:///android_asset/web/index.html");
     }
 

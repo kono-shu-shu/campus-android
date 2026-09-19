@@ -1707,3 +1707,39 @@ input:checked + .slider:before {
     margin-top: 8px;
     margin-bottom: 8px;
 }
+/* 竖屏笔记分类与校园墙适配 */
+@media (max-width: 480px) {
+    .note-filter-chip {
+        padding: 6px 12px;
+        font-size: 11px;
+        flex-shrink: 0;
+    }
+
+    #page-notes > div:first-child {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch !important;
+    }
+
+    #page-notes > div:first-child > div:first-child {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    #page-notes > div:first-child > div:first-child::-webkit-scrollbar {
+        display: none;
+    }
+
+    #btn-goto-note-edit {
+        align-self: flex-end;
+        margin-left: 0 !important;
+    }
+}
+
+@media (max-width: 360px) {
+    .note-filter-chip {
+        padding: 5px 10px;
+        font-size: 10px;
+    }
+}
